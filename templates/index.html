@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Washer Controller</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <p class="eyebrow">WASH CYCLE OPTIMIZATION</p>
+            <h1>Smart Washer Controller</h1>
+            <p class="tagline">Tune sensor inputs and fuzzy inference parameters to compute optimal wash duration, water volume, and spin profiles.</p>
+        </header>
+
+        <div class="dashboard-grid">
+            <!-- Left Column: Parameters & Model Settings -->
+            <section class="card lab-card">
+                <h2 class="section-title">Configuration</h2>
+                <p class="section-lead">Sensor readings and inference engine settings.</p>
+
+                <form id="controlForm" class="train-form">
+                    <label class="field" for="inferenceSelect">
+                        <span>Inference engine</span>
+                        <select id="inferenceSelect" name="inference">
+                            <option value="mamdani" selected>Mamdani (Min-Max)</option>
+                            <option value="larsen">Larsen (Product-Sum)</option>
+                        </select>
+                    </label>
+
+                    <label class="field" for="defuzzSelect">
+                        <span>Defuzzification method</span>
+                        <select id="defuzzSelect" name="defuzz_method">
+                            <option value="centroid" selected>Centroid (Center of Gravity)</option>
+                            <option value="bisector">Bisector (Area bisect)</option>
+                            <option value="mom">Mean of Maximum (MOM)</option>
+                        </select>
+                    </label>
+
+                    <label class="field" for="dirtInput">
+                        <span>Dirtiness level (%)</span>
+                        <div class="input-range-wrap">
+                            <input type="range" id="dirtSlider" min="0" max="100" value="45" step="1">
+                            <input type="number" id="dirtInput" min="0" max="100" value="45" class="num-input">
+                        </div>
+                    </label>
+
+                    <label class="field" for="loadInput">
+                        <span>Load weight (kg)</span>
+                        <div class="input-range-wrap">
+                            <input type="range" id="loadSlider" min="0" max="10" value="5.0" step="0.1">
+                            <input type="number" id="loadInput" min="0" max="10" value="5.0" step="0.1" class="num-input">
+                        </div>
+                    </label>
+
+                    <label class="field" for="fabricSelect">
+                        <span>Fabric program</span>
+                        <select id="fabricSelect" name="fabric_type">
+                            <option value="cotton" selected>Cotton / Mixed</option>
+                            <option value="synthetics">Synthetics</option>
+                            <option value="delicate">Delicates / Wool</option>
+                            <option value="heavy">Heavy Denim / Bedding</option>
+                        </select>
+                    </label>
+
+                    <div class="action-row">
+                        <button type="button" class="btn btn-secondary" id="btnReset">Reset</button>
+                        <button type="submit" class="btn btn-primary" id="btnCalculate">Calculate</button>
+                    </div>
+
+                    <p class="train-status" id="paramStatus">mamdani &middot; centroid &middot; 45% dirt &middot; 5.0 kg</p>
+                </form>
+
+                <!-- Preset Profiles -->
+                <div class="examples-block">
+                    <h3>Preset Profiles</h3>
+                    <div class="examples-grid">
+                        <div>
+                            <h4 class="label-ham">Light Duty</h4>
+                            <div class="example-list">
+                                <button type="button" class="sample-btn" data-dirt="15" data-load="2.0" data-fabric="delicate" data-inf="mamdani" data-defuzz="centroid">
+                                    Quick wash &middot; 15% dirt, 2.0 kg
+                                </button>
+                                <button type="button" class="sample-btn" data-dirt="25" data-load="3.5" data-fabric="synthetics" data-inf="mamdani" data-defuzz="centroid">
+                                    Activewear &middot; 25% dirt, 3.5 kg
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 class="label-spam">Standard & Heavy</h4>
+                            <div class="example-list">
+                                <button type="button" class="sample-btn" data-dirt="45" data-load="5.0" data-fabric="cotton" data-inf="mamdani" data-defuzz="centroid">
+                                    Daily mix &middot; 45% dirt, 5.0 kg
+                                </button>
+                                <button type="button" class="sample-btn" data-dirt="90" data-load="9.0" data-fabric="heavy" data-inf="larsen" data-defuzz="mom">
+                                    Heavy bedding &middot; 90% dirt, 9.0 kg
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Active Rules Accordion -->
+                <div class="expl-accordion" style="margin-top: 1.15rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                    <details class="expl-item" id="detailsReasoning" open>
+                        <summary>Inference Details & Rule Breakdown</summary>
+                        <p class="highlight-note">Rules currently firing in the fuzzy inference engine based on sensor inputs.</p>
+                        <div class="rule-weights-container" id="ruleWeightsContainer">
+                            <!-- Rendered via JS -->
+                        </div>
+                    </details>
+                </div>
+            </section>
+
+            <!-- Right Column: Outputs, Live Drum Telemetry & Rule Contributions -->
+            <section class="card classify-card">
+                <div class="canvas-header">
+                    <div class="status-indicator">
+                        <span class="status-dot is-ok" id="statusDot"></span>
+                        <span id="statusText">Ready</span>
+                    </div>
+                    <span class="engine-badge" id="engineBadge">Mamdani &middot; Centroid</span>
+                </div>
+
+                <!-- Live Washing Machine Visual Strip -->
+                <div class="drum-visual-strip">
+                    <div class="washer-machine">
+                        <!-- Top Control Panel -->
+                        <div class="washer-top-panel">
+                            <div class="washer-drawer"></div>
+                            <div class="washer-dial"></div>
+                            <div class="washer-screen">
+                                <span class="washer-screen-led"></span>
+                            </div>
+                        </div>
+                        <!-- Front Loading Door with Live Drum Inside -->
+                        <div class="washer-door drum-portal">
+                            <div class="drum-water-fill" id="drumWaterFill"></div>
+                            <div class="washer-door-glare"></div>
+                            <div class="drum-cage" id="drumCage">
+                                <div class="drum-cross cross-h"></div>
+                                <div class="drum-cross cross-v"></div>
+                            </div>
+                            <div class="washer-door-handle"></div>
+                        </div>
+                        <!-- Bottom Plinth & Feet -->
+                        <div class="washer-bottom-plinth">
+                            <div class="washer-foot"></div>
+                            <div class="washer-foot"></div>
+                        </div>
+                    </div>
+
+                    <div class="drum-info">
+                        <span class="telemetry-label">Smart Washer Simulation</span>
+                        <strong class="telemetry-val stage-val" id="telemetryStage">Main Wash</strong>
+                        <p class="drum-note">Real-time dynamic wash drum agitation & water level</p>
+                    </div>
+                </div>
+
+                <!-- Primary Crisp Outputs -->
+                <div class="stats-grid" id="metricsGrid">
+                    <div class="stat-card">
+                        <span class="stat-label">Wash Time</span>
+                        <span class="stat-number" id="statWashTime">45.0 min</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Water Level</span>
+                        <span class="stat-number" id="statWaterLevel">50.0 L</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Spin Speed</span>
+                        <span class="stat-number" id="statSpinSpeed">800 RPM</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Active Rules</span>
+                        <span class="stat-number" id="statActiveRules">2 / 9</span>
+                    </div>
+                </div>
+
+                <!-- Result Card -->
+                <div class="result-card" id="resultCard">
+                    <h3>Recommended Wash Cycle</h3>
+                    <div class="result-top">
+                        <div id="cycleBadge" class="badge">Standard Wash Cycle</div>
+                        <div class="confidence-block">
+                            <span class="stat-label">Total Duration</span>
+                            <strong id="durationText">45 minutes</strong>
+                        </div>
+                    </div>
+
+                    <div class="confidence-track">
+                        <div id="durationBar" class="confidence-bar" style="width: 50%;"></div>
+                    </div>
+
+                    <!-- Meta list summary -->
+                    <ul class="meta-list">
+                        <li><span>Soil condition</span><strong id="metaSoil">Medium (0.80)</strong></li>
+                        <li><span>Weight status</span><strong id="metaLoad">Medium (0.80)</strong></li>
+                        <li><span>Estimated energy</span><strong id="metaEnergy">0.48 kWh</strong></li>
+                        <li><span>Estimated detergent</span><strong id="metaDetergent">45 ml</strong></li>
+                        <li><span>Water efficiency</span><strong id="metaWaterEff">Optimal</strong></li>
+                        <li><span>Fabric care</span><strong id="metaFabric">Standard</strong></li>
+                    </ul>
+
+                    <!-- Collapsible Reasoning & Charts Accordion -->
+                    <div class="expl-accordion">
+                        <details class="expl-item" id="detailsCharts" open>
+                            <summary>Fuzzy Membership & Defuzzification Charts</summary>
+                            <p class="highlight-note">Graphical visualization of input fuzzy memberships and aggregated output defuzzification.</p>
+
+                            <!-- Sub Tabs for Charts -->
+                            <div class="chart-tab-bar">
+                                <button type="button" class="chart-tab-btn active" data-chart-tab="inputs">Input Memberships</button>
+                                <button type="button" class="chart-tab-btn" data-chart-tab="outputs">Output Defuzzification</button>
+                            </div>
+
+                            <!-- Tab 1: Input Variable Memberships -->
+                            <div class="chart-tab-panel active" id="tabPanelInputs">
+                                <div class="chart-group">
+                                    <div class="chart-card">
+                                        <div class="chart-card-header">
+                                            <span class="chart-title">Dirtiness Level (%)</span>
+                                            <span class="chart-badge" id="chartBadgeDirt">Current: 45%</span>
+                                        </div>
+                                        <div class="canvas-wrapper">
+                                            <canvas id="canvasDirt"></canvas>
+                                        </div>
+                                        <div class="chart-legend">
+                                            <span class="legend-item"><span class="legend-dot dot-low"></span>Low [0, 0, 20, 50]</span>
+                                            <span class="legend-item"><span class="legend-dot dot-med"></span>Medium [25, 50, 75]</span>
+                                            <span class="legend-item"><span class="legend-dot dot-high"></span>High [50, 80, 100, 100]</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="chart-card">
+                                        <div class="chart-card-header">
+                                            <span class="chart-title">Load Weight (kg)</span>
+                                            <span class="chart-badge" id="chartBadgeLoad">Current: 5.0 kg</span>
+                                        </div>
+                                        <div class="canvas-wrapper">
+                                            <canvas id="canvasLoad"></canvas>
+                                        </div>
+                                        <div class="chart-legend">
+                                            <span class="legend-item"><span class="legend-dot dot-low"></span>Light [0, 0, 2, 4.5]</span>
+                                            <span class="legend-item"><span class="legend-dot dot-med"></span>Medium [3, 5.5, 8]</span>
+                                            <span class="legend-item"><span class="legend-dot dot-high"></span>Heavy [6.5, 8.5, 10, 10]</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Tab 2: Output Variable Defuzzification -->
+                            <div class="chart-tab-panel" id="tabPanelOutputs">
+                                <div class="chart-group">
+                                    <div class="chart-card">
+                                        <div class="chart-card-header">
+                                            <span class="chart-title">Wash Time (minutes)</span>
+                                            <span class="chart-badge" id="chartBadgeWash">Centroid: 45.0 min</span>
+                                        </div>
+                                        <div class="canvas-wrapper">
+                                            <canvas id="canvasWash"></canvas>
+                                        </div>
+                                    </div>
+
+                                    <div class="chart-card">
+                                        <div class="chart-card-header">
+                                            <span class="chart-title">Water Level (liters)</span>
+                                            <span class="chart-badge" id="chartBadgeWater">Centroid: 50.0 L</span>
+                                        </div>
+                                        <div class="canvas-wrapper">
+                                            <canvas id="canvasWater"></canvas>
+                                        </div>
+                                    </div>
+
+                                    <div class="chart-card">
+                                        <div class="chart-card-header">
+                                            <span class="chart-title">Spin Speed (RPM)</span>
+                                            <span class="chart-badge" id="chartBadgeSpin">Centroid: 800 RPM</span>
+                                        </div>
+                                        <div class="canvas-wrapper">
+                                            <canvas id="canvasSpin"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Footer -->
+        <footer class="app-footer">
+            <p>Smart Washer Controller &middot; http://localhost:8000</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
